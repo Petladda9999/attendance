@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin · ระบบลงเวลาและเงินเดือน</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>
   :root { --bg:#F3F7F2; --card:#FFFFFF; --text:#10241A; --muted:#5B6F62; --green:#138A4B; --green-soft:#DDF3E5; --orange:#9A3412; --orange-soft:#FFEDD5; --red:#B42318; --red-soft:#FDE4E1; --line:#E2EAE3; }
   * { box-sizing: border-box; }
@@ -41,6 +42,7 @@
   .modal { background:#fff; border-radius:18px; padding:20px; width:100%; max-width:640px; max-height:90vh; overflow:auto; display:flex; flex-direction:column; gap:14px; }
   .modal img { width:100%; border-radius:12px; }
   .hidden { display:none !important; }
+  .qrbox { width:280px; height:280px; margin:0 auto; flex-shrink:0; } .qrbox svg { width:100%; height:100%; display:block; }
   .center { text-align:center; padding:40px; }
   h2 { margin:0 0 12px; font-size:18px; }
   #print-area { display:none; }
@@ -49,6 +51,10 @@
     #print-area { display:block; }
     .slip-page { page-break-after:always; padding:16mm; font-size:12pt; }
     .slip-page table td { border-bottom:1px solid #ddd; padding:6px 0; } .slip-page td:last-child { text-align:right; }
+    .poster { width:210mm; min-height:290mm; padding:20mm; display:flex; flex-direction:column; align-items:center; gap:9mm; text-align:center; page-break-after:always; }
+    .poster h1 { font-size:38pt; margin:0; line-height:1.2; } .poster .qr { width:120mm; height:120mm; } .poster .qr svg { width:100%; height:100%; display:block; }
+    .poster .branch { font-size:24pt; font-weight:700; padding:3mm 10mm; border:2px solid #000; border-radius:999px; }
+    .poster ol { text-align:left; font-size:16pt; line-height:1.7; }
   }
 </style>
 </head>
@@ -58,6 +64,7 @@
   <button type="button" data-tab="today" class="active">วันนี้</button>
   <button type="button" data-tab="requests">คำขอ <span id="pending-badge"></span></button>
   <button type="button" data-tab="employees">พนักงาน</button>
+  <button type="button" data-tab="branches">สาขา</button>
   <button type="button" data-tab="payroll" id="tab-payroll" class="hidden">เงินเดือน</button>
 </nav>
 <main id="main"><div class="card center">กำลังเปิดระบบ...</div></main>
@@ -122,7 +129,7 @@ async function start() {
 function go(tab) {
   S.tab = tab;
   document.querySelectorAll('#nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
-  ({ today: showToday, requests: showRequests, employees: showEmployees, payroll: showPayroll })[tab]();
+  ({ today: showToday, requests: showRequests, employees: showEmployees, branches: showBranches, payroll: showPayroll })[tab]();
 }
 
 /* ---------- วันนี้ ---------- */
@@ -309,6 +316,78 @@ function printSlips() {
       s.items.filter(function (i) { return i.kind === 'DEDUCT'; }).map(function (i) { return line(i.label, i.amount, true); }).join('') +
       '<tr><td><b>รับสุทธิ</b></td><td><b>' + money(s.net) + ' บาท</b></td></tr></table></div>';
   }).join('');
+  window.print();
+}
+
+/* ---------- สาขา ---------- */
+function qrSvg(locId) {
+  var q = qrcode(0, 'M');
+  q.addData('https://liff.line.me/' + LIFF_ID + '?loc=' + encodeURIComponent(locId));
+  q.make();
+  return q.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
+}
+async function showBranches() {
+  loading();
+  try {
+    var r = await api('adminLocations');
+    S.locs = r;
+    main.innerHTML =
+      '<div class="card scroll"><div class="toolbar" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">สาขาทั้งหมด (' + r.locations.length + ')</h2>' +
+      (r.isOwner ? '<button type="button" class="btn" onclick="editBranch()">+ เพิ่มสาขา</button>' : '') + '</div>' +
+      '<table><thead><tr><th>รหัส</th><th>ชื่อสาขา</th><th>พิกัด</th><th class="num">รัศมี (ม.)</th><th class="num">พนักงาน</th><th></th></tr></thead><tbody>' +
+      r.locations.map(function (l) {
+        return '<tr><td>' + esc(l.locId) + '</td><td>' + esc(l.name) + '</td><td><a href="https://www.google.com/maps?q=' + l.lat + ',' + l.lng + '" target="_blank" rel="noopener">' + l.lat.toFixed(5) + ', ' + l.lng.toFixed(5) + '</a></td>' +
+          '<td class="num">' + l.radius + '</td><td class="num">' + l.employees + '</td><td class="num">' +
+          '<button type="button" class="linkbtn" onclick="branchQR(\'' + esc(l.locId) + '\')">QR</button> ' +
+          (r.isOwner ? '<button type="button" class="linkbtn" onclick="editBranch(\'' + esc(l.locId) + '\')">แก้ไข</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      (r.locations.length > 1 ? '<div class="toolbar"><button type="button" class="btn secondary" onclick="printPosters()">พิมพ์ QR ทุกสาขา</button></div>' : '') +
+      '<div class="muted">พนักงานสแกน QR ของสาขาไหนก็ได้ ระบบตรวจว่ายืนอยู่ในรัศมีของสาขานั้นจริง · กำหนดสาขาประจำของพนักงานได้ที่เมนูพนักงาน</div>';
+  } catch (e) { fail(e); }
+}
+function findLoc(id) { return (S.locs.locations || []).filter(function (l) { return l.locId === id; })[0]; }
+function editBranch(id) {
+  var l = id ? findLoc(id) : { name: '', lat: '', lng: '', radius: 150 };
+  modal('<h2>' + (id ? 'แก้ไขสาขา ' + esc(id) : 'เพิ่มสาขาใหม่') + '</h2>' +
+    '<label>ชื่อสาขา<input id="b-name" value="' + esc(l.name) + '" placeholder="เช่น สาขาบางนา"></label>' +
+    '<label>พิกัด (lat, lng)<input id="b-coord" value="' + (id ? esc(l.lat + ', ' + l.lng) : '') + '" placeholder="เช่น 13.7563, 100.5018"></label>' +
+    '<div class="muted">วิธีหาพิกัด: เปิด Google Maps กดค้างที่ประตูสาขา แล้วคัดลอกตัวเลขมาวาง หรือถ้ายืนอยู่ที่สาขาตอนนี้ กดปุ่มด้านล่าง</div>' +
+    '<div class="toolbar"><button type="button" class="btn secondary" id="b-here">ใช้ตำแหน่งปัจจุบันของฉัน</button><span class="muted" id="b-here-msg"></span></div>' +
+    '<label>รัศมีที่ให้สแกนได้ (เมตร)<input id="b-radius" type="number" min="30" max="2000" value="' + esc(l.radius) + '"></label>' +
+    '<div class="muted">แนะนำ 100–200 เมตร (GPS ในอาคารคลาดเคลื่อนได้ 20–50 เมตร)</div>' +
+    '<div class="toolbar"><button type="button" class="btn" id="b-save">บันทึก</button><button type="button" class="btn secondary" onclick="closeModal()">ยกเลิก</button></div>');
+  $('b-here').onclick = function () {
+    $('b-here-msg').textContent = 'กำลังหาตำแหน่ง...';
+    navigator.geolocation.getCurrentPosition(function (p) {
+      $('b-coord').value = p.coords.latitude.toFixed(6) + ', ' + p.coords.longitude.toFixed(6);
+      $('b-here-msg').textContent = 'ได้แล้ว (คลาดเคลื่อน ±' + Math.round(p.coords.accuracy) + ' ม.)';
+    }, function () { $('b-here-msg').textContent = 'หาตำแหน่งไม่ได้ กรุณาอนุญาตการเข้าถึงตำแหน่ง'; }, { enableHighAccuracy: true, timeout: 20000 });
+  };
+  $('b-save').onclick = async function () {
+    var m = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec($('b-coord').value);
+    if (!m) { alert('กรุณาใส่พิกัดแบบ 13.7563, 100.5018'); return; }
+    this.disabled = true;
+    try {
+      var r = await api('adminSaveLocation', { locId: id || '', name: $('b-name').value, lat: Number(m[1]), lng: Number(m[2]), radius: $('b-radius').value });
+      closeModal(); await showBranches();
+      if (!id) branchQR(r.locId);
+    } catch (e) { alert(e.message); this.disabled = false; }
+  };
+}
+function posterHtml(l) {
+  return '<div class="poster"><div>' + esc(S.locs.company) + '</div><h1>สแกนเพื่อลงเวลา<br>เข้า-ออกงาน</h1><div class="qr">' + qrSvg(l.locId) + '</div>' +
+    '<div class="branch">' + esc(l.name) + '</div><ol><li>เปิดกล้อง LINE แล้วสแกน QR นี้</li><li>ถ่ายเซลฟี่ให้เห็นหน้าและป้ายนี้</li><li>รอขึ้นว่า "สำเร็จ" ก็เรียบร้อย</li></ol></div>';
+}
+function branchQR(id) {
+  var l = findLoc(id);
+  if (!l) return;
+  modal('<h2>QR ลงเวลา · ' + esc(l.name) + '</h2><div class="qrbox">' + qrSvg(l.locId) + '</div>' +
+    '<div class="muted" style="text-align:center;word-break:break-all">https://liff.line.me/' + esc(LIFF_ID) + '?loc=' + esc(l.locId) + '</div>' +
+    '<div class="toolbar"><button type="button" class="btn" id="q-print">พิมพ์โปสเตอร์ A4</button><button type="button" class="btn secondary" onclick="closeModal()">ปิด</button></div>');
+  $('q-print').onclick = function () { $('print-area').innerHTML = posterHtml(l); window.print(); };
+}
+function printPosters() {
+  $('print-area').innerHTML = S.locs.locations.map(posterHtml).join('');
   window.print();
 }
 
