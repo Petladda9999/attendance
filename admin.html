@@ -42,6 +42,19 @@
   .modal { background:#fff; border-radius:18px; padding:20px; width:100%; max-width:640px; max-height:90vh; overflow:auto; display:flex; flex-direction:column; gap:14px; }
   .modal img { width:100%; border-radius:12px; }
   .hidden { display:none !important; }
+  .people { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; }
+  .person { background:var(--card); border-radius:16px; padding:14px 16px; box-shadow:0 2px 0 var(--line); display:flex; flex-direction:column; gap:8px; }
+  .person .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .person .name { font-weight:700; font-size:16px; }
+  .person .times { display:flex; gap:16px; font-size:14px; } .person .times b { font-size:18px; display:block; }
+  .avatar { width:40px; height:40px; border-radius:20px; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; }
+  .check { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .check:last-child { border-bottom:0; }
+  .dot { width:26px; height:26px; border-radius:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:700; font-size:14px; }
+  .days { display:flex; gap:6px; flex-wrap:wrap; } .days label { flex-direction:row; align-items:center; gap:4px; border:1px solid #C9D6CC; border-radius:8px; padding:6px 10px; color:var(--text); font-size:14px; }
+  .days input { min-height:auto; }
+  .switch { flex-direction:row !important; align-items:center; gap:10px !important; color:var(--text) !important; font-size:15px !important; }
+  .switch input { width:20px; height:20px; min-height:auto; }
   .qrbox { width:280px; height:280px; margin:0 auto; flex-shrink:0; } .qrbox svg { width:100%; height:100%; display:block; }
   .center { text-align:center; padding:40px; }
   h2 { margin:0 0 12px; font-size:18px; }
@@ -66,6 +79,7 @@
   <button type="button" data-tab="employees">พนักงาน</button>
   <button type="button" data-tab="branches">สาขา</button>
   <button type="button" data-tab="payroll" id="tab-payroll" class="hidden">เงินเดือน</button>
+  <button type="button" data-tab="settings" id="tab-settings" class="hidden">ตั้งค่า</button>
 </nav>
 <main id="main"><div class="card center">กำลังเปิดระบบ...</div></main>
 <div id="print-area"></div>
@@ -121,7 +135,7 @@ async function start() {
     $('company').textContent = (S.me.company || 'ระบบลงเวลา') + ' · Admin';
     $('me').textContent = S.me.name + ' (' + (S.me.role === 'owner' ? 'เจ้าของ' : 'หัวหน้า') + ')';
     $('nav').classList.remove('hidden');
-    if (S.me.role === 'owner') $('tab-payroll').classList.remove('hidden');
+    if (S.me.role === 'owner') { $('tab-payroll').classList.remove('hidden'); $('tab-settings').classList.remove('hidden'); }
     document.querySelectorAll('#nav button').forEach(function (b) { b.onclick = function () { go(b.dataset.tab); }; });
     go('today');
   } catch (e) { fail(e); }
@@ -129,17 +143,39 @@ async function start() {
 function go(tab) {
   S.tab = tab;
   document.querySelectorAll('#nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
-  ({ today: showToday, requests: showRequests, employees: showEmployees, branches: showBranches, payroll: showPayroll })[tab]();
+  ({ today: showToday, requests: showRequests, employees: showEmployees, branches: showBranches, payroll: showPayroll, settings: showSettings })[tab]();
 }
 
 /* ---------- วันนี้ ---------- */
+var AV_COLORS = [['#CFE7F5', '#1E4E6E'], ['#F7D9C4', '#7A3E14'], ['#E4D9F5', '#4B2F7A'], ['#DDF3E5', '#0E6B3A'], ['#FFEDD5', '#9A3412']];
+function avatar(name, i) { var c = AV_COLORS[i % AV_COLORS.length]; return '<span class="avatar" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(String(name || '?').trim().charAt(0)) + '</span>'; }
+function setupChecklist(st) {
+  var items = [
+    [st.company, 'ตั้งชื่อบริษัท', 'แสดงบนรูปลงเวลาและสลิป', 'settings'],
+    [st.location, 'ตั้งพิกัดสาขาให้ตรงบริษัท', 'ไม่ตั้ง พนักงานจะสแกนไม่ผ่าน', 'branches'],
+    [st.liff, 'ใส่ลิงก์ LIFF', 'ให้ข้อความแจ้งเตือนมีปุ่มกดเปิด', 'settings'],
+    [st.employees, 'ชวนพนักงานลงทะเบียน', 'ส่งลิงก์หรือให้สแกน QR', 'employees'],
+    [st.rates, 'ตั้งค่าจ้างพนักงานทุกคน', 'ใช้คิดเงินเดือน', 'employees']
+  ];
+  var done = items.filter(function (x) { return x[0]; }).length;
+  if (done === items.length) return '';
+  return '<div class="card"><h2>เริ่มต้นใช้งาน (' + done + '/' + items.length + ')</h2>' + items.map(function (x) {
+    return '<div class="check"><span class="dot" style="background:' + (x[0] ? 'var(--green-soft);color:var(--green)' : '#EEF1F0;color:#5B6F62') + '">' + (x[0] ? '✓' : '') + '</span>' +
+      '<div style="flex:1"><div style="font-weight:600' + (x[0] ? ';color:var(--muted);text-decoration:line-through' : '') + '">' + esc(x[1]) + '</div><div class="muted">' + esc(x[2]) + '</div></div>' +
+      (x[0] ? '' : '<button type="button" class="btn secondary" onclick="go(\'' + x[3] + '\')">ไปตั้งค่า</button>') + '</div>';
+  }).join('') + '</div>';
+}
 async function showToday(date) {
   loading();
   try {
     var r = await api('adminDashboard', { date: date || todayStr() });
     $('pending-badge').innerHTML = r.pending ? '<span class="badge b-orange">' + r.pending + '</span>' : '';
     var c = r.counts;
+    var order = { 'ขาด': 0, 'สาย': 1, 'ยังไม่มา': 2, 'ลา': 3, 'มา': 4, 'มาวันหยุด': 5, 'หยุด': 6 };
+    var list = r.list.slice().sort(function (a, b) { return (order[a.status] || 9) - (order[b.status] || 9); });
     main.innerHTML =
+      (r.isOwner ? setupChecklist(r.setup) : '') +
+      (r.pending ? '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--orange-soft)"><div style="font-weight:600;color:var(--orange)">มี ' + r.pending + ' รายการรออนุมัติ</div><button type="button" class="btn" onclick="go(\'requests\')">ไปอนุมัติ</button></div>' : '') +
       '<div class="toolbar"><label>วันที่<input type="date" id="d" value="' + esc(r.date) + '"></label></div>' +
       '<div class="stats">' +
       '<div class="stat" style="background:var(--green-soft);color:var(--green)"><div class="n">' + c.present + '</div><div class="l">มาตรงเวลา</div></div>' +
@@ -147,12 +183,17 @@ async function showToday(date) {
       '<div class="stat" style="background:#EEF1F0;color:#3D5446"><div class="n">' + c.notYet + '</div><div class="l">ยังไม่มา</div></div>' +
       '<div class="stat" style="background:var(--red-soft);color:var(--red)"><div class="n">' + c.absent + '</div><div class="l">ขาด</div></div>' +
       '<div class="stat" style="background:#E4D9F5;color:#4B2F7A"><div class="n">' + c.leave + '</div><div class="l">ลา</div></div></div>' +
-      '<div class="card scroll"><table><thead><tr><th>พนักงาน</th><th>สถานะ</th><th>เข้า</th><th>ออก</th><th class="num">สาย (นาที)</th><th>หมายเหตุ</th><th>รูป</th></tr></thead><tbody>' +
-      r.list.map(function (x) {
-        return '<tr><td>' + esc(x.name) + '</td><td>' + badge(x.status) + '</td><td>' + esc(x.in) + '</td><td>' + esc(x.out) + '</td><td class="num">' + (x.late || '') + '</td><td class="muted">' + esc(x.note) + '</td><td>' +
-          (x.inPhoto ? '<button type="button" class="linkbtn" onclick="showPhoto(\'' + esc(x.inPhoto) + '\',\'' + esc(x.name) + ' เข้างาน ' + esc(x.in) + '\')">รูปเข้า</button> ' : '') +
-          (x.outPhoto ? '<button type="button" class="linkbtn" onclick="showPhoto(\'' + esc(x.outPhoto) + '\',\'' + esc(x.name) + ' ออกงาน ' + esc(x.out) + '\')">รูปออก</button>' : '') + '</td></tr>';
-      }).join('') + '</tbody></table></div>' +
+      (list.length ? '<div class="people">' + list.map(function (x, i) {
+        return '<div class="person"><div class="top"><div style="display:flex;align-items:center;gap:10px">' + avatar(x.name, i) + '<span class="name">' + esc(x.name) + '</span></div>' + badge(x.status) + '</div>' +
+          '<div class="times"><div><span class="muted">เข้า</span><b>' + (x.in || '–') + '</b></div><div><span class="muted">ออก</span><b>' + (x.out || '–') + '</b></div>' +
+          (x.late ? '<div><span class="muted">สาย</span><b style="color:var(--orange)">' + x.late + ' น.</b></div>' : '') + '</div>' +
+          (x.note ? '<div class="muted">' + esc(x.note) + '</div>' : '') +
+          ((x.inPhoto || x.outPhoto) ? '<div class="toolbar">' +
+            (x.inPhoto ? '<button type="button" class="linkbtn" onclick="showPhoto(\'' + esc(x.inPhoto) + '\',\'' + esc(x.name) + ' เข้างาน ' + esc(x.in) + '\')">ดูรูปเข้างาน</button>' : '') +
+            (x.outPhoto ? '<button type="button" class="linkbtn" onclick="showPhoto(\'' + esc(x.outPhoto) + '\',\'' + esc(x.name) + ' ออกงาน ' + esc(x.out) + '\')">ดูรูปออกงาน</button>' : '') + '</div>' : '') +
+          '</div>';
+      }).join('') + '</div>' : '<div class="card center">ยังไม่มีพนักงานที่ต้องลงเวลา<br><button type="button" class="btn" style="margin-top:12px" onclick="go(\'employees\')">ชวนพนักงานลงทะเบียน</button></div>') +
+      (r.untracked.length ? '<div class="muted">ไม่ต้องสแกนลงเวลา: ' + r.untracked.map(esc).join(', ') + '</div>' : '') +
       (r.rejected.length ? '<div class="card"><h2>สแกนไม่ผ่าน (ควรตรวจ)</h2><table><tbody>' + r.rejected.map(function (x) {
         return '<tr><td>' + esc(x.time) + '</td><td>' + esc(x.name) + '</td><td class="muted">' + esc(x.reason) + '</td><td>' +
           (x.photo ? '<button type="button" class="linkbtn" onclick="showPhoto(\'' + esc(x.photo) + '\',\'' + esc(x.name) + '\')">ดูรูป</button>' : '') + '</td></tr>';
@@ -199,11 +240,16 @@ async function showEmployees() {
     var r = await loadEmployees();
     var owner = r.isOwner;
     var cyc = { monthly: 'รายเดือน', semimonthly: 'ทุก 15 วัน', weekly: 'รายสัปดาห์' };
-    main.innerHTML = '<div class="card scroll"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>สถานะ</th><th>กะ</th><th>สาขา</th><th>ประเภท</th>' + (owner ? '<th class="num">อัตรา</th>' : '') + '<th>รอบจ่าย</th><th>สิทธิ์</th><th></th></tr></thead><tbody>' +
+    var invite = 'https://liff.line.me/' + LIFF_ID;
+    main.innerHTML = '<div class="card" style="display:flex;gap:20px;align-items:center;flex-wrap:wrap"><div class="qrbox" style="width:140px;height:140px;margin:0">' + qrSvgUrl(invite) + '</div>' +
+      '<div style="flex:1;min-width:240px"><h2>ชวนพนักงานลงทะเบียน</h2><div class="muted" style="margin-bottom:10px">ส่งลิงก์นี้ในกลุ่ม LINE ของพนักงาน หรือให้สแกน QR ลงทะเบียนเสร็จแล้วจะไปรออนุมัติที่แท็บคำขอ</div>' +
+      '<div class="toolbar"><input id="inv" value="' + esc(invite) + '" readonly style="flex:1;min-width:220px" aria-label="ลิงก์ลงทะเบียน"><button type="button" class="btn" onclick="copyInvite()">คัดลอกลิงก์</button></div></div></div>' +
+      '<div class="card scroll"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>สถานะ</th><th>กะ</th><th>สาขา</th><th>ประเภท</th>' + (owner ? '<th class="num">อัตรา</th>' : '') + '<th>รอบจ่าย</th><th>สิทธิ์</th><th>ลงเวลา</th><th></th></tr></thead><tbody>' +
       r.employees.map(function (x) {
         return '<tr><td>' + esc(x.empId) + '</td><td>' + esc(x.name) + '</td><td>' + badge(x.status) + '</td><td>' + esc(x.shiftId) + '</td><td>' + esc(x.locId) + '</td>' +
           '<td>' + (x.type === 'daily' ? 'รายวัน' : 'รายเดือน') + '</td>' + (owner ? '<td class="num">' + (x.rate ? money(x.rate) : '<span class="badge b-orange">ยังไม่ตั้ง</span>') + '</td>' : '') +
           '<td>' + esc(cyc[x.cycle] || x.cycle) + '</td><td>' + esc({ employee: 'พนักงาน', manager: 'หัวหน้า', owner: 'เจ้าของ' }[x.role] || x.role) + '</td>' +
+          '<td>' + (x.track ? 'ต้องสแกน' : '<span class="muted">ไม่ต้องสแกน</span>') + '</td>' +
           '<td><button type="button" class="linkbtn" onclick="editEmployee(\'' + esc(x.empId) + '\')">แก้ไข</button></td></tr>';
       }).join('') + '</tbody></table></div><div class="muted">เพิ่มกะ สาขา วันหยุด และประเภทการลา ได้ในชีต Shifts, Locations, Holidays, LeaveTypes</div>';
   } catch (e) { fail(e); }
@@ -219,7 +265,8 @@ async function editEmployee(empId, approving) {
     '<label>เบอร์โทร<input id="f-phone" value="' + esc(x.phone) + '"></label>' +
     '<label>สถานะ<select id="f-status">' + opt([['pending', 'รออนุมัติ'], ['active', 'ใช้งาน'], ['inactive', 'ปิดการใช้งาน']], approving ? 'active' : x.status) + '</select></label>' +
     '<label>กะ<select id="f-shift">' + opt(r.shifts.map(function (s) { return [s.id, s.id + ' · ' + s.name + ' ' + s.time]; }), x.shiftId) + '</select></label>' +
-    '<label>สาขา<select id="f-loc">' + opt([['', '—']].concat(r.locations.map(function (l) { return [l.id, l.name]; })), x.locId) + '</select></label>' +
+    '<label>สาขาประจำ<select id="f-loc">' + opt([['', '—']].concat(r.locations.map(function (l) { return [l.id, l.name]; })), x.locId) + '</select></label>' +
+    '<label class="switch"><input type="checkbox" id="f-track"' + (x.track ? ' checked' : '') + '>ต้องสแกนลงเวลา (ปิดสำหรับเจ้าของ/ผู้ที่ไม่ต้องลงเวลา)</label>' +
     (owner ? '<label>ประเภท<select id="f-type">' + opt([['monthly', 'รายเดือน'], ['daily', 'รายวัน']], x.type) + '</select></label>' +
       '<label>อัตรา (บาท/เดือน หรือ บาท/วัน)<input id="f-rate" type="number" min="0" step="0.01" value="' + esc(x.rate || '') + '"></label>' +
       '<label>รอบจ่าย<select id="f-cycle">' + opt([['monthly', 'รายเดือน'], ['semimonthly', 'ทุก 15 วัน'], ['weekly', 'รายสัปดาห์']], x.cycle) + '</select></label>' +
@@ -228,7 +275,7 @@ async function editEmployee(empId, approving) {
       '<label>เลขบัญชี<input id="f-account" value="' + esc(x.account) + '"></label>' : '') +
     '</div><div class="toolbar"><button type="button" class="btn" id="f-save">บันทึก</button><button type="button" class="btn secondary" onclick="closeModal()">ยกเลิก</button></div>');
   $('f-save').onclick = async function () {
-    var f = { name: $('f-name').value, phone: $('f-phone').value, status: $('f-status').value, shiftId: $('f-shift').value, locId: $('f-loc').value };
+    var f = { name: $('f-name').value, phone: $('f-phone').value, status: $('f-status').value, shiftId: $('f-shift').value, locId: $('f-loc').value, track: $('f-track').checked };
     if (owner) { f.type = $('f-type').value; f.rate = $('f-rate').value || '0'; f.cycle = $('f-cycle').value; f.role = $('f-role').value; f.bank = $('f-bank').value; f.account = $('f-account').value; }
     this.disabled = true;
     try { await api('adminUpdateEmployee', { empId: empId, fields: f }); closeModal(); S.emps = null; go(S.tab); }
@@ -389,6 +436,107 @@ function branchQR(id) {
 function printPosters() {
   $('print-area').innerHTML = S.locs.locations.map(posterHtml).join('');
   window.print();
+}
+
+/* ---------- ตั้งค่า ---------- */
+function qrSvgUrl(url) { var q = qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 8, margin: 2, scalable: true }); }
+function copyInvite() { var i = $('inv'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } alert('คัดลอกลิงก์แล้ว'); }
+var DAY_NAMES = ['', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+async function showSettings() {
+  loading();
+  try {
+    var r = await api('adminSettings');
+    S.cfg = r;
+    var st = r.settings;
+    function on(k) { return String(st[k]).toUpperCase() === 'TRUE'; }
+    main.innerHTML =
+      '<div class="card"><h2>ข้อมูลบริษัท</h2><div class="form-grid">' +
+      '<label>ชื่อบริษัท / ร้าน<input id="s-COMPANY_NAME" value="' + esc(st.COMPANY_NAME) + '"></label>' +
+      '<label>ลิงก์ LIFF (ใช้ในข้อความแจ้งเตือน)<input id="s-LIFF_URL" value="' + esc(st.LIFF_URL || ('https://liff.line.me/' + LIFF_ID)) + '"></label></div>' +
+      '<div class="toolbar" style="margin-top:12px"><button type="button" class="btn" onclick="saveSettings([\'COMPANY_NAME\',\'LIFF_URL\'])">บันทึก</button></div></div>' +
+
+      '<div class="card"><div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">กะทำงาน</h2><button type="button" class="btn" onclick="editShift()">+ เพิ่มกะ</button></div><table><thead><tr><th>รหัส</th><th>ชื่อกะ</th><th>เวลา</th><th>วันทำงาน</th><th class="num">ผ่อนผัน</th><th class="num">พัก</th><th></th></tr></thead><tbody>' +
+      r.shifts.map(function (x) {
+        return '<tr><td>' + esc(x.id) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.start + '–' + x.end) + '</td><td>' + x.workdays.map(function (d) { return DAY_NAMES[d]; }).join(' ') + '</td>' +
+          '<td class="num">' + x.grace + ' นาที</td><td class="num">' + x.breakMin + ' นาที</td><td class="num"><button type="button" class="linkbtn" onclick="editShift(\'' + esc(x.id) + '\')">แก้ไข</button></td></tr>';
+      }).join('') + '</tbody></table></div>' +
+
+      '<div class="card"><h2>วันหยุดนักขัตฤกษ์ / วันหยุดบริษัท</h2><div class="toolbar"><input type="date" id="h-date" aria-label="วันที่"><input id="h-name" placeholder="ชื่อวันหยุด" aria-label="ชื่อวันหยุด"><button type="button" class="btn" onclick="addHoliday()">เพิ่ม</button></div>' +
+      '<table style="margin-top:8px"><tbody>' + (r.holidays.length ? r.holidays.map(function (h) {
+        return '<tr><td>' + esc(h.date) + '</td><td>' + esc(h.name) + '</td><td class="num"><button type="button" class="linkbtn" style="color:var(--red)" onclick="delHoliday(\'' + esc(h.date) + '\')">ลบ</button></td></tr>';
+      }).join('') : '<tr><td class="muted">ยังไม่มีวันหยุด</td></tr>') + '</tbody></table></div>' +
+
+      '<div class="card"><div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">ประเภทการลา</h2><button type="button" class="btn" onclick="editLeave()">+ เพิ่มประเภท</button></div><table><thead><tr><th>ประเภท</th><th>ได้ค่าจ้าง</th><th class="num">โควตา/ปี</th><th></th></tr></thead><tbody>' +
+      r.leaveTypes.map(function (t) {
+        return '<tr><td>' + esc(t.name) + '</td><td>' + (t.paid ? 'ได้' : 'ไม่ได้') + '</td><td class="num">' + (t.quota === null ? 'ไม่จำกัด' : t.quota + ' วัน') + '</td><td class="num"><button type="button" class="linkbtn" onclick="editLeave(\'' + esc(t.code) + '\')">แก้ไข</button></td></tr>';
+      }).join('') + '</tbody></table><div class="muted">ค่าเริ่มต้นเป็นตัวอย่าง ควรตรวจกับกฎหมายแรงงานและระเบียบบริษัท</div></div>' +
+
+      '<div class="card"><h2>กฎการคิดเงิน</h2><div class="form-grid">' +
+      '<label>ตัวคูณ OT วันทำงาน<input id="s-OT_RATE_WORKDAY" type="number" step="0.1" value="' + esc(st.OT_RATE_WORKDAY) + '"></label>' +
+      '<label>ตัวคูณ OT วันหยุด<input id="s-OT_RATE_HOLIDAY" type="number" step="0.1" value="' + esc(st.OT_RATE_HOLIDAY) + '"></label>' +
+      '<label>ทำงานวันหยุด: รายเดือน (จ่ายเพิ่ม ×)<input id="s-HOLIDAY_RATE_MONTHLY" type="number" step="0.1" value="' + esc(st.HOLIDAY_RATE_MONTHLY) + '"></label>' +
+      '<label>ทำงานวันหยุด: รายวัน (×)<input id="s-HOLIDAY_RATE_DAILY" type="number" step="0.1" value="' + esc(st.HOLIDAY_RATE_DAILY) + '"></label>' +
+      '<label>หารเงินเดือนเป็นรายวันด้วย (วัน)<input id="s-MONTH_DAYS" type="number" value="' + esc(st.MONTH_DAYS) + '"></label>' +
+      '<label class="switch"><input type="checkbox" id="s-LATE_DEDUCT"' + (on('LATE_DEDUCT') ? ' checked' : '') + '>หักเงินตามนาทีที่สาย/กลับก่อน</label></div>' +
+      '<div class="toolbar" style="margin-top:12px"><button type="button" class="btn" onclick="saveSettings([\'OT_RATE_WORKDAY\',\'OT_RATE_HOLIDAY\',\'HOLIDAY_RATE_MONTHLY\',\'HOLIDAY_RATE_DAILY\',\'MONTH_DAYS\',\'LATE_DEDUCT\'])">บันทึก</button></div></div>' +
+
+      '<div class="card"><h2>การสแกนและการแจ้งเตือน</h2><div class="form-grid">' +
+      '<label>GPS คลาดเคลื่อนได้ไม่เกิน (เมตร)<input id="s-MAX_ACCURACY_M" type="number" value="' + esc(st.MAX_ACCURACY_M) + '"></label>' +
+      '<label>เก็บรูปลงเวลา (วัน)<input id="s-PHOTO_RETENTION_DAYS" type="number" value="' + esc(st.PHOTO_RETENTION_DAYS) + '"></label>' +
+      '<label class="switch"><input type="checkbox" id="s-ALLOW_FILE_CAMERA"' + (on('ALLOW_FILE_CAMERA') ? ' checked' : '') + '>ให้ใช้กล้องของเครื่องได้ ถ้ากล้องในแอปเปิดไม่ได้</label>' +
+      '<label class="switch"><input type="checkbox" id="s-NOTIFY_MANAGERS"' + (on('NOTIFY_MANAGERS') ? ' checked' : '') + '>แจ้งหัวหน้าทาง LINE เมื่อมีคำขอใหม่</label>' +
+      '<label class="switch"><input type="checkbox" id="s-NOTIFY_SLIP"' + (on('NOTIFY_SLIP') ? ' checked' : '') + '>แจ้งพนักงานทาง LINE เมื่อสลิปพร้อม</label>' +
+      '<label class="switch"><input type="checkbox" id="s-NOTIFY_EMPLOYEE_DECISION"' + (on('NOTIFY_EMPLOYEE_DECISION') ? ' checked' : '') + '>แจ้งพนักงานเมื่ออนุมัติ/ไม่อนุมัติ</label></div>' +
+      (r.hasOaToken ? '' : '<div class="muted" style="margin-top:8px">การแจ้งเตือนทาง LINE จะทำงานเมื่อใส่ LINE_OA_TOKEN ใน Apps Script แล้ว</div>') +
+      '<div class="toolbar" style="margin-top:12px"><button type="button" class="btn" onclick="saveSettings([\'MAX_ACCURACY_M\',\'PHOTO_RETENTION_DAYS\',\'ALLOW_FILE_CAMERA\',\'NOTIFY_MANAGERS\',\'NOTIFY_SLIP\',\'NOTIFY_EMPLOYEE_DECISION\'])">บันทึก</button></div></div>';
+  } catch (e) { fail(e); }
+}
+async function saveSettings(keys) {
+  var values = {};
+  keys.forEach(function (k) { var el = $('s-' + k); values[k] = el.type === 'checkbox' ? el.checked : el.value; });
+  try { await api('adminSaveSettings', { values: values }); alert('บันทึกแล้ว'); if (values.COMPANY_NAME) $('company').textContent = values.COMPANY_NAME + ' · Admin'; }
+  catch (e) { alert(e.message); }
+}
+function editShift(id) {
+  var x = id ? S.cfg.shifts.filter(function (s) { return s.id === id; })[0] : { name: '', start: '08:00', end: '17:00', grace: 10, breakMin: 60, workdays: [1, 2, 3, 4, 5, 6] };
+  modal('<h2>' + (id ? 'แก้ไขกะ ' + esc(id) : 'เพิ่มกะใหม่') + '</h2><div class="form-grid">' +
+    '<label>ชื่อกะ<input id="sh-name" value="' + esc(x.name) + '" placeholder="เช่น กะเช้า"></label>' +
+    '<label>เวลาเข้า<input id="sh-start" type="time" value="' + esc(x.start) + '"></label>' +
+    '<label>เวลาออก<input id="sh-end" type="time" value="' + esc(x.end) + '"></label>' +
+    '<label>ผ่อนผันมาสาย (นาที)<input id="sh-grace" type="number" min="0" value="' + esc(x.grace) + '"></label>' +
+    '<label>พักเที่ยง (นาที)<input id="sh-break" type="number" min="0" value="' + esc(x.breakMin) + '"></label></div>' +
+    '<div><div class="muted" style="margin-bottom:6px">วันทำงาน</div><div class="days">' + [1, 2, 3, 4, 5, 6, 7].map(function (d) {
+      return '<label><input type="checkbox" class="sh-day" value="' + d + '"' + (x.workdays.indexOf(d) >= 0 ? ' checked' : '') + '>' + DAY_NAMES[d] + '</label>';
+    }).join('') + '</div></div>' +
+    '<div class="toolbar"><button type="button" class="btn" id="sh-save">บันทึก</button><button type="button" class="btn secondary" onclick="closeModal()">ยกเลิก</button></div>');
+  $('sh-save').onclick = async function () {
+    var days = Array.prototype.map.call(document.querySelectorAll('.sh-day:checked'), function (c) { return Number(c.value); });
+    this.disabled = true;
+    try {
+      await api('adminSaveShift', { shiftId: id || '', name: $('sh-name').value, start: $('sh-start').value, end: $('sh-end').value, grace: $('sh-grace').value, breakMin: $('sh-break').value, workdays: days });
+      closeModal(); S.emps = null; showSettings();
+    } catch (e) { alert(e.message); this.disabled = false; }
+  };
+}
+async function addHoliday() {
+  try { await api('adminSaveHoliday', { date: $('h-date').value, name: $('h-name').value }); showSettings(); } catch (e) { alert(e.message); }
+}
+async function delHoliday(d) {
+  if (!confirm('ลบวันหยุด ' + d + '?')) return;
+  try { await api('adminDeleteHoliday', { date: d }); showSettings(); } catch (e) { alert(e.message); }
+}
+function editLeave(code) {
+  var t = code ? S.cfg.leaveTypes.filter(function (x) { return x.code === code; })[0] : { name: '', paid: true, quota: null };
+  modal('<h2>' + (code ? 'แก้ไข ' + esc(t.name) : 'เพิ่มประเภทการลา') + '</h2><div class="form-grid">' +
+    '<label>ชื่อประเภท<input id="lt-name" value="' + esc(t.name) + '" placeholder="เช่น ลาคลอด"></label>' +
+    '<label>โควตาต่อปี (วัน) เว้นว่าง = ไม่จำกัด<input id="lt-quota" type="number" min="0" value="' + (t.quota === null ? '' : esc(t.quota)) + '"></label>' +
+    '<label class="switch"><input type="checkbox" id="lt-paid"' + (t.paid ? ' checked' : '') + '>ได้รับค่าจ้างระหว่างลา</label></div>' +
+    '<div class="toolbar"><button type="button" class="btn" id="lt-save">บันทึก</button><button type="button" class="btn secondary" onclick="closeModal()">ยกเลิก</button></div>');
+  $('lt-save').onclick = async function () {
+    this.disabled = true;
+    try { await api('adminSaveLeaveType', { code: code || '', name: $('lt-name').value, quota: $('lt-quota').value, paid: $('lt-paid').checked }); closeModal(); showSettings(); }
+    catch (e) { alert(e.message); this.disabled = false; }
+  };
 }
 
 start();
