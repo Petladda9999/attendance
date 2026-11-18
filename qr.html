@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>พิมพ์ QR ลงเวลาเข้างาน</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Noto Sans Thai", "Sarabun", sans-serif; background:#EEF1F5; color:#0E1726; }
+  .form { max-width:720px; margin:24px auto; background:#fff; border-radius:16px; padding:20px; display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; }
+  .form label { display:flex; flex-direction:column; gap:6px; font-size:14px; color:#4A5668; }
+  .form input { min-height:44px; border:1px solid #C9D2DF; border-radius:10px; padding:0 10px; font-size:16px; }
+  .form button { grid-column:1 / -1; min-height:48px; border:0; border-radius:12px; background:#0E1726; color:#fff; font-size:16px; font-weight:700; cursor:pointer; }
+  .poster { width:210mm; min-height:297mm; margin:0 auto 24px; background:#fff; padding:20mm; display:flex; flex-direction:column; align-items:center; gap:10mm; text-align:center; }
+  .poster .company { font-size:20pt; color:#4A5668; }
+  .poster h1 { margin:0; font-size:40pt; line-height:1.2; }
+  .poster .qr { width:120mm; height:120mm; }
+  .poster .qr svg { width:100%; height:100%; }
+  .poster .branch { font-size:24pt; font-weight:700; padding:3mm 10mm; border:2px solid #0E1726; border-radius:999px; }
+  .poster ol { text-align:left; font-size:16pt; line-height:1.7; margin:0; }
+  @media print {
+    body { background:#fff; }
+    .form { display:none; }
+    .poster { margin:0; }
+    @page { size:A4; margin:0; }
+  }
+</style>
+</head>
+<body>
+<form class="form" id="f">
+  <label>LIFF ID<input id="liff" required placeholder="1234567890-abcdefgh"></label>
+  <label>รหัสสาขา (loc_id ในชีต Locations)<input id="loc" required value="HQ"></label>
+  <label>ชื่อสาขา<input id="branch" value="สำนักงานใหญ่"></label>
+  <label>ชื่อบริษัท<input id="company" value=""></label>
+  <button type="submit">สร้าง QR แล้วกดพิมพ์ (Ctrl+P)</button>
+</form>
+
+<div class="poster" id="poster">
+  <div class="company" id="p-company"></div>
+  <h1>สแกนเพื่อลงเวลา<br>เข้า-ออกงาน</h1>
+  <div class="qr" id="p-qr" role="img" aria-label="QR สำหรับลงเวลา"></div>
+  <div class="branch" id="p-branch"></div>
+  <ol>
+    <li>เปิดกล้อง LINE แล้วสแกน QR นี้</li>
+    <li>ถ่ายเซลฟี่ให้เห็นหน้าและป้ายนี้</li>
+    <li>รอขึ้นว่า "สำเร็จ" ก็เรียบร้อย</li>
+  </ol>
+</div>
+
+<script>
+function render() {
+  var liffId = document.getElementById('liff').value.trim();
+  var loc = document.getElementById('loc').value.trim();
+  if (!liffId || !loc) return;
+  var url = 'https://liff.line.me/' + encodeURIComponent(liffId) + '?loc=' + encodeURIComponent(loc);
+  var qr = qrcode(0, 'M');
+  qr.addData(url);
+  qr.make();
+  document.getElementById('p-qr').innerHTML = qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
+  document.getElementById('p-branch').textContent = document.getElementById('branch').value;
+  document.getElementById('p-company').textContent = document.getElementById('company').value;
+}
+document.getElementById('f').onsubmit = function (e) { e.preventDefault(); render(); setTimeout(function () { window.print(); }, 300); };
+['liff', 'loc', 'branch', 'company'].forEach(function (id) { document.getElementById(id).addEventListener('input', render); });
+</script>
+</body>
+</html>
